@@ -2,6 +2,7 @@ import 'dotenv/config'
 import inquirer from 'inquirer'
 import jsforce, { Connection, DescribeSObjectResult } from 'jsforce'
 import ora from 'ora'
+import { generateExcelReport, RecordResult } from './excel.js'
 
 type SObjectRecord = Record<string, any>
 
@@ -81,16 +82,25 @@ async function main() {
 
       const batches = chunkArray(records, 200)
       let totalSuccess = 0
+      const recordsProcessed: RecordResult[] = []
 
       for (const [index, batch] of batches.entries()) {
         const result = await connDest.sobject(object).create(batch)
         const successCount = result.filter(r => r.success).length
         totalSuccess += successCount
 
+        recordsProcessed.push(...result.map((result) => ({
+          Inserido: result.success ? '✅' : '❌',
+          IdSalesforce: result.id,
+          Erro: result.errors?.length ? result.errors[0].message : undefined
+        })))
+
         ora().info(
           `Lote ${index + 1}/${batches.length} - ${successCount} registros inseridos com sucesso`
         )
       }
+
+      await generateExcelReport(object, records, recordsProcessed)
 
       ora().succeed(`✅ Total inserido na org destino: ${totalSuccess}`)
     } catch (err: any) {
