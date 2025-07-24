@@ -1,0 +1,10 @@
+{
+  "type": "module",
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "dotenv": "^17.2.0",
+    "inquirer": "^12.8.2",
+    "jsforce": "^3.9.4",
+    "ora": "^8.2.0"
+  }
+}
