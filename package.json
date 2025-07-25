@@ -2,7 +2,7 @@
     "type": "module",
     "scripts": {
         "build": "tsc",
-        "start": "node dist/clone.js"
+        "start": "node dist/main.js"
     },
     "dependencies": {
         "@types/jsforce": "^1.11.5",
