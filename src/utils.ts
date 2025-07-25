@@ -89,49 +89,69 @@ export async function insertWithHierarchyHandling(
     const spinner = ora(`Inserindo registros hierárquicos de ${objectName}...`).start()
     const logs: ResultLog[] = []
 
-    const roots = records.filter(r => !r.ParentTerritory2Id)
-    const children = records.filter(r => r.ParentTerritory2Id)
+    const idMap = new Map<string, string>() // OldId → NewId
+    const pending = [...records]
+    let insertedCount = 0
+    let wave = 0
 
-    // Inserir os registros raiz
-    const rootResults = await conn.sobject(objectName).create(roots)
-    const idMap = new Map<string, string>()
+    while (pending.length > 0) {
+        wave++
+        const readyToInsert: any[] = []
+        const stillPending: any[] = []
 
-    rootResults.forEach((res, i) => {
-        const oldId = roots[i].Id
-        if (res.success && oldId) idMap.set(oldId, res.id!)
-        logs.push({
-            Inserido: res.success ? '✅' : '❌',
-            IdSalesforce: res.id,
-            Erro: res.success ? undefined : res.errors?.[0]?.message,
-        })
-    })
-
-    spinner.succeed(`${roots.length} registros raiz inseridos`)
-
-    // Atualizar filhos com novos ParentTerritory2Id
-    const updatedChildren = children.map(record => {
-        const newParentId = idMap.get(record.ParentTerritory2Id)
-        return {
-            ...record,
-            ParentTerritory2Id: newParentId ?? null,
+        for (const record of pending) {
+            const parentId = record.ParentTerritory2Id
+            if (!parentId || idMap.has(parentId)) {
+                const newParentId = idMap.get(parentId)
+                readyToInsert.push({
+                    ...record,
+                    ParentTerritory2Id: newParentId ?? null,
+                })
+            } else {
+                stillPending.push(record)
+            }
         }
-    })
 
-    // Inserir filhos em batches
-    const childBatches = chunkArray(updatedChildren, 200)
-    for (const [i, batch] of childBatches.entries()) {
-        const res = await conn.sobject(objectName).create(batch)
-        spinner.info(`Lote ${i + 1}/${childBatches.length}: ${res.filter(r => r.success).length} filhos inseridos`)
-        res.forEach((r, j) => {
-            logs.push({
-                Inserido: r.success ? '✅' : '❌',
-                IdSalesforce: r.id,
-                Erro: r.success ? undefined : r.errors?.[0]?.message,
+        if (readyToInsert.length === 0) {
+            spinner.fail(`❌ Não foi possível resolver a hierarquia completa. Registros restantes: ${stillPending.length}`)
+            stillPending.forEach((r) => {
+                logs.push({
+                    Inserido: '❌',
+                    IdSalesforce: undefined,
+                    Erro: `Parente com ID ${r.ParentTerritory2Id} não encontrado.`,
+                })
             })
-        })
+            break
+        }
+
+        const batches = chunkArray(readyToInsert, 200)
+
+        for (const [i, batch] of batches.entries()) {
+            const results = await conn.sobject(objectName).create(batch)
+
+            results.forEach((res, j) => {
+                const original = batch[j]
+                const oldId = original.Id
+
+                if (res.success && oldId) {
+                    idMap.set(oldId, res.id!)
+                }
+
+                logs.push({
+                    Inserido: res.success ? '✅' : '❌',
+                    IdSalesforce: res.id,
+                    Erro: res.success ? undefined : res.errors?.[0]?.message,
+                })
+            })
+
+            spinner.info(`🌊 Onda ${wave}, Lote ${i + 1}/${batches.length}: ${results.filter(r => r.success).length}/${batch.length} inseridos`)
+            insertedCount += results.filter(r => r.success).length
+        }
+
+        pending.length = 0
+        pending.push(...stillPending)
     }
 
-    spinner.succeed(`✅ Hierarquia de ${objectName} clonada com sucesso`)
+    spinner.succeed(`✅ Inserção hierárquica de ${insertedCount} registros de ${objectName} finalizada`)
     return logs
 }
-

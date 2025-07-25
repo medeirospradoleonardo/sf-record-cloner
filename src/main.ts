@@ -32,7 +32,7 @@ async function main() {
     const spinner = ora(`Clonando registros de ${object}...`).start()
     try {
       const metadata: DescribeSObjectResult = await connSource.sobject(object).describe()
-      const writableFields = metadata.fields.filter(f => f.createable && f.name !== 'Id').map(f => f.name)
+      const writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
       const records = await getAllRecords(connSource, writableFields, object)
 
       spinner.succeed(`Encontrados ${records.length} registros de ${object}`)
