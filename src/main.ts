@@ -3,8 +3,22 @@ import inquirer from 'inquirer'
 import { DescribeSObjectResult } from 'jsforce'
 import ora from 'ora'
 import { generateExcelReport, RecordResult } from './excel.js'
-import { chunkArray, getAllRecords, insertWithHierarchyHandling } from './utils.js'
+import { getAllRecords, insertCascade, insertWithHierarchyHandling } from './utils.js'
 import { loginToOrg } from './auth.js'
+
+const HIERARQUY_OBJECTS = {
+  'Territory2': 'ParentTerritory2Id',
+  'Pricebook2': 'OriginPricebook__c'
+}
+
+export const IGNORE_FIELDS_OBJECTS = {
+  'Pricebook2': ['PriceBook__c'],
+  'Account': ['TerritoryLkp__c', 'AddressCity__c', 'RequiresApproval__c', 'SegmentacaodoCliente__c']
+}
+
+export const UNIQUE_FIELDS_OBJECTS = {
+  'Territory2Reference__c': 'TerritoryCode__c'
+}
 
 async function main() {
   const connSource = await loginToOrg(
@@ -25,41 +39,38 @@ async function main() {
     type: 'checkbox',
     name: 'objects',
     message: 'Quais objetos você quer clonar?',
-    choices: ['Account', 'Contact', 'Opportunity', 'Lead', 'Territory2']
+    // choices: ['Account', 'Contact', 'Opportunity', 'Lead', 'Territory2', 'City__c', 'Pricebook2', 'Product2', 'Marca__c']
+    choices: ['Account']
   }])
 
   for (const object of objects) {
     const spinner = ora(`Clonando registros de ${object}...`).start()
     try {
-      const metadata: DescribeSObjectResult = await connSource.sobject(object).describe()
-      const writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
-      const records = await getAllRecords(connSource, writableFields, object)
+      let metadata: DescribeSObjectResult = await connSource.sobject(object).describe()
+      const ignoreFields = IGNORE_FIELDS_OBJECTS[object] ?? []
+      metadata.fields = metadata.fields.filter((field) => !ignoreFields.includes(field.name))
+      let writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
+      const records = (await getAllRecords(connSource, writableFields, object)).slice(0, 4)
 
       spinner.succeed(`Encontrados ${records.length} registros de ${object}`)
 
       let totalSuccess = 0
       const recordsProcessed: RecordResult[] = []
 
-      if (object === 'Territory2' && writableFields.includes('ParentTerritory2Id')) {
-        const result = await insertWithHierarchyHandling(connDest, object, records)
+      if (Object.keys(HIERARQUY_OBJECTS).includes(object)) {
+        const result = await insertWithHierarchyHandling(connDest, object, HIERARQUY_OBJECTS[object], records)
         totalSuccess = result.filter(r => r.Inserido === '✅').length
         recordsProcessed.push(...result)
       } else {
-        const batches = chunkArray(records, 200)
+        const result = await insertCascade(
+          connSource,
+          connDest,
+          object,
+          records
+        )
 
-        for (const [index, batch] of batches.entries()) {
-          const result = await connDest.sobject(object).create(batch)
-          const successCount = result.filter(r => r.success).length
-          totalSuccess += successCount
-
-          recordsProcessed.push(...result.map((r) => ({
-            Inserido: r.success ? '✅' : '❌',
-            IdSalesforce: r.id,
-            Erro: r.errors?.length ? r.errors[0].message : undefined
-          })))
-
-          ora().info(`Lote ${index + 1}/${batches.length} - ${successCount} registros inseridos`)
-        }
+        totalSuccess = result.filter(r => r.Inserido === '✅').length
+        recordsProcessed.push(...result)
       }
 
       await generateExcelReport(object, records, recordsProcessed)
