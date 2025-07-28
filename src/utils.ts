@@ -224,10 +224,6 @@ export async function insertCascade(
             const relatedId = record[field.name]
             const relatedObject = field.referenceTo[0]
 
-            console.log(relatedObject)
-            console.log(record)
-
-
             if (!relatedId) continue
 
             // Se o objeto está na lista de manter ID original
@@ -238,11 +234,27 @@ export async function insertCascade(
 
             if (!insertedCache[relatedObject]) insertedCache[relatedObject] = {}
 
-            if (!insertedCache[relatedObject][relatedId]) {
+            // Detecta ciclo de referência
+            const cacheEntry = insertedCache[relatedObject][relatedId]
+            if (cacheEntry === '__PROCESSING__') {
+                throw new Error(`Loop de referência detectado: ${objectName} → ${relatedObject} (${relatedId})`)
+            }
+
+            if (!cacheEntry) {
+                insertedCache[relatedObject][relatedId] = '__PROCESSING__'
+
                 const relatedExternalField = await getExternalIdField(connSource, relatedObject)
                 const ignoreFieldsRelatedObject = IGNORE_FIELDS_OBJECTS[relatedObject] ?? []
-                let writableFieldsRelatedObject = (await getWritableFields(connSource, relatedObject)).filter((field) => !ignoreFieldsRelatedObject.includes(field))
-                const relatedRecord = await getRecord(connSource, writableFieldsRelatedObject, relatedObject, relatedId)
+                let writableFieldsRelatedObject = (await getWritableFields(connSource, relatedObject)).filter(
+                    (field) => !ignoreFieldsRelatedObject.includes(field)
+                )
+
+                const relatedRecord = await getRecord(
+                    connSource,
+                    writableFieldsRelatedObject,
+                    relatedObject,
+                    relatedId
+                )
                 const externalValue = relatedRecord[relatedExternalField]
 
                 const existing = await connDest
@@ -266,9 +278,9 @@ export async function insertCascade(
                 }
             }
 
-
-            if (insertedCache[relatedObject][relatedId]) {
-                record[field.name] = insertedCache[relatedObject][relatedId]
+            const resolvedId = insertedCache[relatedObject][relatedId]
+            if (resolvedId && resolvedId !== '__PROCESSING__') {
+                record[field.name] = resolvedId
             } else {
                 throw new Error(`Não foi possível resolver a dependência ${relatedObject} (${relatedId})`)
             }
@@ -278,9 +290,10 @@ export async function insertCascade(
     }
 
     const result = await connDest.sobject(objectName).create(toInsert, { allOrNone: false })
-    console.log(objectName)
-    console.log('to Insert' + toInsert)
-    console.log(JSON.stringify(result?.[0]?.errors))
+    if (result[0].errors.length) {
+        console.log(result[0].errors)
+    }
+
     for (let i = 0; i < result.length; i++) {
         const res = result[i]
         const originalId = records[i].Id

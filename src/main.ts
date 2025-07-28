@@ -13,10 +13,13 @@ const HIERARQUY_OBJECTS = {
 
 export const IGNORE_FIELDS_OBJECTS = {
   'Pricebook2': ['PriceBook__c'],
-  'Account': ['TerritoryLkp__c', 'AddressCity__c', 'RequiresApproval__c', 'SegmentacaodoCliente__c']
+  'Account': ['TerritoryLkp__c', 'AddressCity__c', 'RequiresApproval__c', 'SegmentacaodoCliente__c'],
+  'Quote': ['OpportunityId']
 }
 
 export const UNIQUE_FIELDS_OBJECTS = {
+  'Quote': 'Name',
+  'Territory2': 'TerritoryCode__c',
   'Territory2Reference__c': 'TerritoryCode__c'
 }
 
@@ -40,7 +43,7 @@ async function main() {
     name: 'objects',
     message: 'Quais objetos você quer clonar?',
     // choices: ['Account', 'Contact', 'Opportunity', 'Lead', 'Territory2', 'City__c', 'Pricebook2', 'Product2', 'Marca__c']
-    choices: ['Account']
+    choices: ['Account', 'Order', 'ServiceContract']
   }])
 
   for (const object of objects) {
@@ -50,7 +53,7 @@ async function main() {
       const ignoreFields = IGNORE_FIELDS_OBJECTS[object] ?? []
       metadata.fields = metadata.fields.filter((field) => !ignoreFields.includes(field.name))
       let writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
-      const records = (await getAllRecords(connSource, writableFields, object)).slice(0, 4)
+      const records = (await getAllRecords(connSource, writableFields, object)).slice(0, 1)
 
       spinner.succeed(`Encontrados ${records.length} registros de ${object}`)
 
