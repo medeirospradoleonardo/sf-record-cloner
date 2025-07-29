@@ -13,7 +13,7 @@ const HIERARQUY_OBJECTS = {
 
 export const IGNORE_FIELDS_OBJECTS = {
   'Pricebook2': ['PriceBook__c'],
-  'Account': ['TerritoryLkp__c', 'AddressCity__c', 'RequiresApproval__c', 'SegmentacaodoCliente__c', 'Culture__c'],
+  'Account': ['TerritoryLkp__c', 'AddressCity__c', 'RequiresApproval__c', 'SegmentacaodoCliente__c', 'Culture__c', 'AccountCredit__c', 'IntegrationResource__c'],
   'OpportunityLineItem': ['TotalPrice'],
   'Opportunity': ['Culture__c', 'PriceListXPaymentCondition__c', 'AccountAddressDelivery__c', 'PriceListSync__c'],
   'PaymentCondition__c': ['OwnerId']
@@ -21,6 +21,8 @@ export const IGNORE_FIELDS_OBJECTS = {
 }
 
 export const UNIQUE_FIELDS_OBJECTS = {
+  'Account': 'SapId__c',
+  'Order': 'Name',
   'Quote': 'Name',
   'Opportunity': 'Name',
   'Territory2': 'TerritoryCode__c',
@@ -47,7 +49,7 @@ async function main() {
     name: 'objects',
     message: 'Quais objetos você quer clonar?',
     // choices: ['Account', 'Contact', 'Opportunity', 'Lead', 'Territory2', 'City__c', 'Pricebook2', 'Product2', 'Marca__c']
-    choices: ['Account', 'Opportunity', 'OpportunityLineItem', 'Order', 'ServiceContract']
+    choices: ['Account', 'Opportunity', 'OpportunityLineItem', 'Order', 'ServiceContract', 'PaymentCondition__c', 'QuoteLineItem', 'ContractLineItem', 'OrderItem', 'UserTerritory2Association']
   }])
 
   for (const object of objects) {
@@ -57,7 +59,8 @@ async function main() {
       const ignoreFields = IGNORE_FIELDS_OBJECTS[object] ?? []
       metadata.fields = metadata.fields.filter((field) => !ignoreFields.includes(field.name))
       let writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
-      const records = (await getAllRecords(connSource, writableFields, object)).slice(0, 100)
+      const records = (await getAllRecords(connSource, writableFields, object))
+      // .slice(0, 100)
 
       spinner.succeed(`Encontrados ${records.length} registros de ${object}`)
 

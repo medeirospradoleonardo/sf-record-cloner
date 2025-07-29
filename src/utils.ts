@@ -16,9 +16,10 @@ export function chunkArray<T>(array: T[], size: number): T[][] {
 export async function getAllRecords(
     conn: Connection,
     fields: string[],
-    objectName: string
+    objectName: string,
+    where?: string
 ): Promise<SObjectRecord[]> {
-    const soql = `SELECT ${fields.join(',')} FROM ${objectName} LIMIT 100`
+    const soql = `SELECT ${fields.join(',')} FROM ${objectName} ${where ? `WHERE ${where}` : ''} LIMIT 1000`
     let result = await conn.query<SObjectRecord>(soql)
     let records = result.records
 
@@ -187,13 +188,14 @@ export function getReferenceFields(metadata: DescribeSObjectResult): ReferenceFi
 
 /** Busca campo externalId ou unique de um objeto */
 export async function getExternalIdField(conn: Connection, objectName: string): Promise<string> {
+    const uniqueFieldName = UNIQUE_FIELDS_OBJECTS[objectName]
+    if (uniqueFieldName) return uniqueFieldName
+
     const metadata: DescribeSObjectResult = await conn.sobject(objectName).describe()
     const externalField = metadata.fields.find(f => f.externalId)
     if (externalField) return externalField.name
     const uniqueField = metadata.fields.find(f => f.unique && f.name !== 'Id')
     if (uniqueField) return uniqueField.name
-    const uniqueFieldName = UNIQUE_FIELDS_OBJECTS[objectName]
-    if (uniqueFieldName) return uniqueFieldName
     throw new Error(`Nenhum campo externalId ou unique encontrado para ${objectName}`)
 }
 
@@ -213,6 +215,13 @@ export async function insertCascade(
     metadata.fields = metadata.fields.filter((field) => !ignoreFields.includes(field.name))
     let writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
     const relationFields = metadata.fields.filter(f => f.referenceTo.length && f.relationshipName && f.createable)
+
+    const externalField = await getExternalIdField(connSource, objectName)
+    const externalFieldsValue = records.filter((record) => !!record[externalField]).map((record) => `'${record[externalField]}'`)
+
+    const recordsAlreadyExists = (await getAllRecords(connSource, writableFields, objectName, `${externalField} IN (${externalFieldsValue.toString()})`)).filter((record) => record.Id)
+    const externalFieldsValueExists = recordsAlreadyExists.map((record) => record[externalField])
+    records = records.filter((record) => !externalFieldsValueExists.includes(record[externalField]))
 
     if (!insertedCache[objectName]) insertedCache[objectName] = {}
 
@@ -238,7 +247,13 @@ export async function insertCascade(
 
             const cacheEntry = insertedCache[relatedObject][relatedId]
             if (cacheEntry === '__PROCESSING__') {
-                throw new Error(`Loop de referência detectado: ${objectName} → ${relatedObject} (${relatedId})`)
+                successResults.push({
+                    Inserido: '❌',
+                    IdSalesforce: null,
+                    Erro: `Loop de referência detectado: ${objectName} → ${relatedObject} (${relatedId})`
+                })
+                skipRecord = true
+                break
             }
 
             if (!cacheEntry) {
@@ -257,7 +272,6 @@ export async function insertCascade(
                     relatedId
                 )
 
-                // 👤 Tratamento especial para User inativo
                 if (relatedObject === 'User' && relatedRecord.IsActive === false) {
                     record[field.name] = null
                     insertedCache[relatedObject][relatedId] = null
@@ -292,23 +306,17 @@ export async function insertCascade(
             } else if (resolvedId && resolvedId !== '__PROCESSING__') {
                 record[field.name] = resolvedId
             } else {
-                throw new Error(`Não foi possível resolver a dependência ${relatedObject} (${relatedId})`)
+                successResults.push({
+                    Inserido: '❌',
+                    IdSalesforce: null,
+                    Erro: `Não foi possível resolver a dependência ${relatedObject} (${relatedId})`
+                })
+                skipRecord = true
+                break
             }
         }
 
-        // 🔍 Verifica se o registro já existe na org de destino (baseado em externalId)
-        const externalField = await getExternalIdField(connSource, objectName)
-        const externalValue = record[externalField]
-        const alreadyExists = await connDest.sobject(objectName).findOne({ [externalField]: externalValue })
-
-        if (alreadyExists) {
-            successResults.push({
-                Inserido: '⏩', // já existia
-                IdSalesforce: alreadyExists.Id,
-                Erro: undefined
-            })
-            insertedCache[objectName][record.Id] = alreadyExists.Id
-        } else {
+        if (!skipRecord) {
             toInsert.push(record)
             filteredRecords.push(record)
         }
