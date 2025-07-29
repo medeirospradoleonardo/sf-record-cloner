@@ -19,7 +19,7 @@ export async function getAllRecords(
     objectName: string,
     where?: string
 ): Promise<SObjectRecord[]> {
-    const soql = `SELECT ${fields.join(',')} FROM ${objectName} ${where ? `WHERE ${where}` : ''} LIMIT 1000`
+    const soql = `SELECT ${fields.join(',')} FROM ${objectName} ${where ? `WHERE ${where}` : ''}`
     let result = await conn.query<SObjectRecord>(soql)
     let records = result.records
 
@@ -215,13 +215,6 @@ export async function insertCascade(
     metadata.fields = metadata.fields.filter((field) => !ignoreFields.includes(field.name))
     let writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
     const relationFields = metadata.fields.filter(f => f.referenceTo.length && f.relationshipName && f.createable)
-
-    const externalField = await getExternalIdField(connSource, objectName)
-    const externalFieldsValue = records.filter((record) => !!record[externalField]).map((record) => `'${record[externalField]}'`)
-
-    const recordsAlreadyExists = (await getAllRecords(connSource, writableFields, objectName, `${externalField} IN (${externalFieldsValue.toString()})`)).filter((record) => record.Id)
-    const externalFieldsValueExists = recordsAlreadyExists.map((record) => record[externalField])
-    records = records.filter((record) => !externalFieldsValueExists.includes(record[externalField]))
 
     if (!insertedCache[objectName]) insertedCache[objectName] = {}
 

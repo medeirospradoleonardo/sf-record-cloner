@@ -3,7 +3,7 @@ import inquirer from 'inquirer'
 import { DescribeSObjectResult } from 'jsforce'
 import ora from 'ora'
 import { generateExcelReport, RecordResult } from './excel.js'
-import { getAllRecords, insertCascade, insertWithHierarchyHandling } from './utils.js'
+import { chunkArray, getAllRecords, getExternalIdField, insertCascade, insertWithHierarchyHandling } from './utils.js'
 import { loginToOrg } from './auth.js'
 
 const HIERARQUY_OBJECTS = {
@@ -59,10 +59,31 @@ async function main() {
       const ignoreFields = IGNORE_FIELDS_OBJECTS[object] ?? []
       metadata.fields = metadata.fields.filter((field) => !ignoreFields.includes(field.name))
       let writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
-      const records = (await getAllRecords(connSource, writableFields, object))
-      // .slice(0, 100)
+      let records = (await getAllRecords(connSource, writableFields, object))
 
-      spinner.succeed(`Encontrados ${records.length} registros de ${object}`)
+      const externalField = await getExternalIdField(connSource, object)
+
+      // Obtém os valores únicos do externalField a partir dos registros que serão inseridos
+      const externalFieldsValue = records
+        .map((r) => r[externalField])
+        .filter((val): val is string => !!val && typeof val === 'string');
+
+      const batchSize = 500; // respeita limites de query do Salesforce
+      const externalFieldsValueChunks = chunkArray(externalFieldsValue, batchSize);
+
+      let recordsAlreadyExists: any[] = [];
+
+      for (const chunk of externalFieldsValueChunks) {
+        const inClause = chunk.map(v => `'${v.replace(/'/g, "\\'")}'`).join(',');
+        const query = `${externalField} IN (${inClause})`;
+
+        const result = await getAllRecords(connDest, writableFields, object, query);
+
+        recordsAlreadyExists.push(...result.filter(r => r?.[externalField]));
+      }
+
+
+      spinner.succeed(`Encontrados ${records.length} registros de ${object} para inserir`)
 
       let totalSuccess = 0
       const recordsProcessed: RecordResult[] = []
@@ -72,15 +93,30 @@ async function main() {
         totalSuccess = result.filter(r => r.Inserido === '✅').length
         recordsProcessed.push(...result)
       } else {
-        const result = await insertCascade(
-          connSource,
-          connDest,
-          object,
-          records
-        )
+        const batchSize = 200
+        const recordsToInsert = 10000
 
-        totalSuccess = result.filter(r => r.Inserido === '✅').length
-        recordsProcessed.push(...result)
+        const chunks = chunkArray(records, batchSize)
+
+        const totalResult = []
+
+        for (const [index, chunk] of chunks.entries()) {
+          if ((index + 1) * batchSize >= recordsToInsert) {
+            break;
+          }
+
+          const result = await insertCascade(
+            connSource,
+            connDest,
+            object,
+            chunk
+          )
+          totalResult.concat(result)
+        }
+
+
+        totalSuccess = totalResult.filter(r => r.Inserido === '✅').length
+        recordsProcessed.push(...totalResult)
       }
 
       await generateExcelReport(object, records, recordsProcessed)
