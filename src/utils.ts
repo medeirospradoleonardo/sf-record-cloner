@@ -18,7 +18,7 @@ export async function getAllRecords(
     fields: string[],
     objectName: string
 ): Promise<SObjectRecord[]> {
-    const soql = `SELECT ${fields.join(',')} FROM ${objectName}`
+    const soql = `SELECT ${fields.join(',')} FROM ${objectName} LIMIT 100`
     let result = await conn.query<SObjectRecord>(soql)
     let records = result.records
 
@@ -218,15 +218,17 @@ export async function insertCascade(
 
     const successResults: RecordResult[] = []
     const toInsert: any[] = []
+    const filteredRecords: any[] = []
 
     for (const record of records) {
+        let skipRecord = false
+
         for (const field of relationFields) {
             const relatedId = record[field.name]
             const relatedObject = field.referenceTo[0]
 
             if (!relatedId) continue
 
-            // Se o objeto está na lista de manter ID original
             if (retainOriginalIds.includes(relatedObject)) {
                 record[field.name] = relatedId
                 continue
@@ -234,7 +236,6 @@ export async function insertCascade(
 
             if (!insertedCache[relatedObject]) insertedCache[relatedObject] = {}
 
-            // Detecta ciclo de referência
             const cacheEntry = insertedCache[relatedObject][relatedId]
             if (cacheEntry === '__PROCESSING__') {
                 throw new Error(`Loop de referência detectado: ${objectName} → ${relatedObject} (${relatedId})`)
@@ -255,8 +256,15 @@ export async function insertCascade(
                     relatedObject,
                     relatedId
                 )
-                const externalValue = relatedRecord[relatedExternalField]
 
+                // 👤 Tratamento especial para User inativo
+                if (relatedObject === 'User' && relatedRecord.IsActive === false) {
+                    record[field.name] = null
+                    insertedCache[relatedObject][relatedId] = null
+                    continue
+                }
+
+                const externalValue = relatedRecord[relatedExternalField]
                 const existing = await connDest
                     .sobject(relatedObject)
                     .findOne({ [relatedExternalField]: externalValue })
@@ -279,24 +287,38 @@ export async function insertCascade(
             }
 
             const resolvedId = insertedCache[relatedObject][relatedId]
-            if (resolvedId && resolvedId !== '__PROCESSING__') {
+            if (resolvedId === null) {
+                record[field.name] = null
+            } else if (resolvedId && resolvedId !== '__PROCESSING__') {
                 record[field.name] = resolvedId
             } else {
                 throw new Error(`Não foi possível resolver a dependência ${relatedObject} (${relatedId})`)
             }
         }
 
-        toInsert.push(record)
+        // 🔍 Verifica se o registro já existe na org de destino (baseado em externalId)
+        const externalField = await getExternalIdField(connSource, objectName)
+        const externalValue = record[externalField]
+        const alreadyExists = await connDest.sobject(objectName).findOne({ [externalField]: externalValue })
+
+        if (alreadyExists) {
+            successResults.push({
+                Inserido: '⏩', // já existia
+                IdSalesforce: alreadyExists.Id,
+                Erro: undefined
+            })
+            insertedCache[objectName][record.Id] = alreadyExists.Id
+        } else {
+            toInsert.push(record)
+            filteredRecords.push(record)
+        }
     }
 
     const result = await connDest.sobject(objectName).create(toInsert, { allOrNone: false })
-    if (result[0].errors.length) {
-        console.log(result[0].errors)
-    }
 
     for (let i = 0; i < result.length; i++) {
         const res = result[i]
-        const originalId = records[i].Id
+        const originalId = filteredRecords[i].Id
         if (res.success) {
             insertedCache[objectName][originalId] = res.id
         }
