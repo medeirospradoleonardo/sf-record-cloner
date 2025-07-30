@@ -16,7 +16,8 @@ export const IGNORE_FIELDS_OBJECTS = {
   'Account': ['TerritoryLkp__c', 'AddressCity__c', 'RequiresApproval__c', 'SegmentacaodoCliente__c', 'Culture__c', 'AccountCredit__c', 'IntegrationResource__c'],
   'OpportunityLineItem': ['TotalPrice'],
   'Opportunity': ['Culture__c', 'PriceListXPaymentCondition__c', 'AccountAddressDelivery__c', 'PriceListSync__c'],
-  'PaymentCondition__c': ['OwnerId']
+  'PaymentCondition__c': ['OwnerId'],
+  'OrderItem': ['OriginalOrderItemId', 'ParentOrderItem__c', 'ContractLineItem__c']
   // 'Quote': ['OpportunityId']
 }
 
@@ -49,7 +50,7 @@ async function main() {
     name: 'objects',
     message: 'Quais objetos você quer clonar?',
     // choices: ['Account', 'Contact', 'Opportunity', 'Lead', 'Territory2', 'City__c', 'Pricebook2', 'Product2', 'Marca__c']
-    choices: ['Account', 'Opportunity', 'OpportunityLineItem', 'Order', 'ServiceContract', 'PaymentCondition__c', 'QuoteLineItem', 'ContractLineItem', 'OrderItem', 'UserTerritory2Association']
+    choices: ['Account', 'ObjectTerritory2Association', 'OpportunityLineItem', 'Order', 'ServiceContract', 'PaymentCondition__c', 'QuoteLineItem', 'ContractLineItem', 'OrderItem', 'UserTerritory2Association']
   }])
 
   for (const object of objects) {
@@ -79,47 +80,51 @@ async function main() {
 
         const result = await getAllRecords(connDest, writableFields, object, query);
 
-        recordsAlreadyExists.push(...result.filter(r => r?.[externalField]));
+        recordsAlreadyExists.push(...result);
       }
 
+      const recordsAlreadyExistsExternalIds = recordsAlreadyExists.map((record) => record[externalField])
 
-      spinner.succeed(`Encontrados ${records.length} registros de ${object} para inserir`)
+      const recordsToInsertSize = 200
+
+      const recordsToInsert = records.filter((record) => !recordsAlreadyExistsExternalIds.includes(record[externalField])).slice(0, recordsToInsertSize)
+
+      spinner.succeed(`Encontrados ${recordsToInsert.length} registros de ${object} para inserir`)
 
       let totalSuccess = 0
       const recordsProcessed: RecordResult[] = []
 
       if (Object.keys(HIERARQUY_OBJECTS).includes(object)) {
-        const result = await insertWithHierarchyHandling(connDest, object, HIERARQUY_OBJECTS[object], records)
+        const result = await insertWithHierarchyHandling(connDest, object, HIERARQUY_OBJECTS[object], recordsToInsert)
         totalSuccess = result.filter(r => r.Inserido === '✅').length
         recordsProcessed.push(...result)
       } else {
         const batchSize = 200
-        const recordsToInsert = 10000
 
-        const chunks = chunkArray(records, batchSize)
+        const chunks = chunkArray(recordsToInsert, batchSize)
 
-        const totalResult = []
+        let totalResult = []
+        let insertedCache = {}
 
         for (const [index, chunk] of chunks.entries()) {
-          if ((index + 1) * batchSize >= recordsToInsert) {
-            break;
-          }
-
           const result = await insertCascade(
             connSource,
             connDest,
             object,
-            chunk
+            chunk,
+            insertedCache
           )
-          totalResult.concat(result)
-        }
 
+          totalResult.push(...result)
+
+          ora().info(`Chunk ${index}/${chunks.length} finalizada: ${result.filter(r => r.Inserido === '✅').length} processados com sucesso!`)
+        }
 
         totalSuccess = totalResult.filter(r => r.Inserido === '✅').length
         recordsProcessed.push(...totalResult)
       }
 
-      await generateExcelReport(object, records, recordsProcessed)
+      await generateExcelReport(object, recordsToInsert, recordsProcessed)
 
       ora().succeed(`✅ Total inserido na org destino: ${totalSuccess}`)
     } catch (err: any) {

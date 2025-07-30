@@ -196,7 +196,8 @@ export async function getExternalIdField(conn: Connection, objectName: string): 
     if (externalField) return externalField.name
     const uniqueField = metadata.fields.find(f => f.unique && f.name !== 'Id')
     if (uniqueField) return uniqueField.name
-    throw new Error(`Nenhum campo externalId ou unique encontrado para ${objectName}`)
+    // throw new Error(`Nenhum campo externalId ou unique encontrado para ${objectName}`)
+    return
 }
 
 
@@ -252,7 +253,10 @@ export async function insertCascade(
             if (!cacheEntry) {
                 insertedCache[relatedObject][relatedId] = '__PROCESSING__'
 
+                let existing
+
                 const relatedExternalField = await getExternalIdField(connSource, relatedObject)
+
                 const ignoreFieldsRelatedObject = IGNORE_FIELDS_OBJECTS[relatedObject] ?? []
                 let writableFieldsRelatedObject = (await getWritableFields(connSource, relatedObject)).filter(
                     (field) => !ignoreFieldsRelatedObject.includes(field)
@@ -271,10 +275,13 @@ export async function insertCascade(
                     continue
                 }
 
-                const externalValue = relatedRecord[relatedExternalField]
-                const existing = await connDest
-                    .sobject(relatedObject)
-                    .findOne({ [relatedExternalField]: externalValue })
+                if (relatedExternalField) {
+
+                    const externalValue = relatedRecord[relatedExternalField]
+                    existing = await connDest
+                        .sobject(relatedObject)
+                        .findOne({ [relatedExternalField]: externalValue })
+                }
 
                 if (!existing) {
                     const relatedResults = await insertCascade(
