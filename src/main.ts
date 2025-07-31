@@ -15,10 +15,9 @@ export const IGNORE_FIELDS_OBJECTS = {
   'Pricebook2': ['PriceBook__c'],
   'Account': ['TerritoryLkp__c', 'AddressCity__c', 'RequiresApproval__c', 'SegmentacaodoCliente__c', 'Culture__c', 'AccountCredit__c', 'IntegrationResource__c'],
   'OpportunityLineItem': ['TotalPrice'],
-  'Opportunity': ['Culture__c', 'PriceListXPaymentCondition__c', 'AccountAddressDelivery__c', 'PriceListSync__c'],
+  'Opportunity': ['Culture__c', 'PriceListXPaymentCondition__c', 'AccountAddressDelivery__c', 'PriceListSync__c', 'AccountAddressDelivery__c', 'SyncedQuoteId'],
   'PaymentCondition__c': ['OwnerId'],
   'OrderItem': ['OriginalOrderItemId', 'ParentOrderItem__c', 'ContractLineItem__c']
-  // 'Quote': ['OpportunityId']
 }
 
 export const UNIQUE_FIELDS_OBJECTS = {
@@ -85,9 +84,10 @@ async function main() {
 
       const recordsAlreadyExistsExternalIds = recordsAlreadyExists.map((record) => record[externalField])
 
-      const recordsToInsertSize = 200
+      const recordsToInsertSize = 1
 
       const recordsToInsert = records.filter((record) => !recordsAlreadyExistsExternalIds.includes(record[externalField])).slice(0, recordsToInsertSize)
+      // console.log(recordsToInsert[0])
 
       spinner.succeed(`Encontrados ${recordsToInsert.length} registros de ${object} para inserir`)
 
@@ -117,7 +117,7 @@ async function main() {
 
           totalResult.push(...result)
 
-          ora().info(`Chunk ${index}/${chunks.length} finalizada: ${result.filter(r => r.Inserido === '✅').length} processados com sucesso!`)
+          ora().info(`Chunk ${index + 1}/${chunks.length} finalizada: ${result.filter(r => r.Inserido === '✅').length} processados com sucesso!`)
         }
 
         totalSuccess = totalResult.filter(r => r.Inserido === '✅').length

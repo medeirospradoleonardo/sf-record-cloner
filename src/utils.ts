@@ -19,7 +19,7 @@ export async function getAllRecords(
     objectName: string,
     where?: string
 ): Promise<SObjectRecord[]> {
-    const soql = `SELECT ${fields.join(',')} FROM ${objectName} ${where ? `WHERE ${where}` : ''}`
+    const soql = `SELECT ${fields.join(',')} FROM ${objectName} ${where ? `WHERE ${where}` : ''} LIMIT 1`
     let result = await conn.query<SObjectRecord>(soql)
     let records = result.records
 
@@ -217,11 +217,17 @@ export async function insertCascade(
     let writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
     const relationFields = metadata.fields.filter(f => f.referenceTo.length && f.relationshipName && f.createable)
 
+    console.log(objectName)
+
+    if (objectName == 'Quote') console.log(relationFields.map((relation) => relation.name))
+
     if (!insertedCache[objectName]) insertedCache[objectName] = {}
 
     const successResults: RecordResult[] = []
     const toInsert: any[] = []
     const filteredRecords: any[] = []
+
+    if (objectName == 'Quote') console.log(records[0])
 
     for (const record of records) {
         let skipRecord = false
@@ -246,6 +252,7 @@ export async function insertCascade(
                     IdSalesforce: null,
                     Erro: `Loop de referência detectado: ${objectName} → ${relatedObject} (${relatedId})`
                 })
+                console.log(`Loop de referência detectado: ${objectName} → ${relatedObject} (${relatedId})`)
                 skipRecord = true
                 break
             }
@@ -276,7 +283,7 @@ export async function insertCascade(
                 }
 
                 if (relatedExternalField) {
-
+                    if (objectName == 'Quote') console.log('oi')
                     const externalValue = relatedRecord[relatedExternalField]
                     existing = await connDest
                         .sobject(relatedObject)
@@ -311,6 +318,7 @@ export async function insertCascade(
                     IdSalesforce: null,
                     Erro: `Não foi possível resolver a dependência ${relatedObject} (${relatedId})`
                 })
+                console.log('dependencia')
                 skipRecord = true
                 break
             }
@@ -320,9 +328,15 @@ export async function insertCascade(
             toInsert.push(record)
             filteredRecords.push(record)
         }
+
+        if (objectName == 'Quote') {
+            console.log(skipRecord)
+        }
     }
 
     const result = await connDest.sobject(objectName).create(toInsert, { allOrNone: false })
+    console.log(toInsert)
+    console.log(result?.[0].errors)
 
     for (let i = 0; i < result.length; i++) {
         const res = result[i]
