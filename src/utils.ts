@@ -245,7 +245,6 @@ export async function insertCascade(
 
                 if (!user.IsActive) {
                     record[field.name] = null
-                    insertedCache[relatedObject][relatedId] = null
                     continue
                 }
 
