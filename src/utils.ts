@@ -19,7 +19,7 @@ export async function getAllRecords(
     objectName: string,
     where?: string
 ): Promise<SObjectRecord[]> {
-    const soql = `SELECT ${fields.join(',')} FROM ${objectName} ${where ? `WHERE ${where}` : ''} LIMIT 1`
+    const soql = `SELECT ${fields.join(',')} FROM ${objectName} ${where ? `WHERE ${where}` : ''}`
     let result = await conn.query<SObjectRecord>(soql)
     let records = result.records
 
@@ -217,19 +217,16 @@ export async function insertCascade(
     let writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
     const relationFields = metadata.fields.filter(f => f.referenceTo.length && f.relationshipName && f.createable)
 
-    console.log(objectName)
-
-    if (objectName == 'Quote') console.log(relationFields.map((relation) => relation.name))
-
     if (!insertedCache[objectName]) insertedCache[objectName] = {}
 
     const successResults: RecordResult[] = []
     const toInsert: any[] = []
     const filteredRecords: any[] = []
 
-    if (objectName == 'Quote') console.log(records[0])
-
     for (const record of records) {
+        if (objectName == 'Order' && ['Pedido Finalizado', 'Pedido Cancelado'].includes(record.Status)) {
+            record.Status = 'Aberto'
+        }
         let skipRecord = false
 
         for (const field of relationFields) {
@@ -239,6 +236,19 @@ export async function insertCascade(
             if (!relatedId) continue
 
             if (retainOriginalIds.includes(relatedObject)) {
+                if (relatedObject != 'User') {
+                    record[field.name] = relatedId
+                    continue
+                }
+
+                const user = await getRecord(connDest, ['IsActive'], relatedObject, relatedId)
+
+                if (!user.IsActive) {
+                    record[field.name] = null
+                    insertedCache[relatedObject][relatedId] = null
+                    continue
+                }
+
                 record[field.name] = relatedId
                 continue
             }
@@ -250,9 +260,8 @@ export async function insertCascade(
                 successResults.push({
                     Inserido: '❌',
                     IdSalesforce: null,
-                    Erro: `Loop de referência detectado: ${objectName} → ${relatedObject} (${relatedId})`
+                    Erro: `Loop de referência detectado: ${objectName} → ${relatedObject} (${relatedId}) (${field.name})`
                 })
-                console.log(`Loop de referência detectado: ${objectName} → ${relatedObject} (${relatedId})`)
                 skipRecord = true
                 break
             }
@@ -276,14 +285,7 @@ export async function insertCascade(
                     relatedId
                 )
 
-                if (relatedObject === 'User' && relatedRecord.IsActive === false) {
-                    record[field.name] = null
-                    insertedCache[relatedObject][relatedId] = null
-                    continue
-                }
-
                 if (relatedExternalField) {
-                    if (objectName == 'Quote') console.log('oi')
                     const externalValue = relatedRecord[relatedExternalField]
                     existing = await connDest
                         .sobject(relatedObject)
@@ -318,7 +320,6 @@ export async function insertCascade(
                     IdSalesforce: null,
                     Erro: `Não foi possível resolver a dependência ${relatedObject} (${relatedId})`
                 })
-                console.log('dependencia')
                 skipRecord = true
                 break
             }
@@ -328,15 +329,12 @@ export async function insertCascade(
             toInsert.push(record)
             filteredRecords.push(record)
         }
-
-        if (objectName == 'Quote') {
-            console.log(skipRecord)
-        }
     }
 
     const result = await connDest.sobject(objectName).create(toInsert, { allOrNone: false })
-    console.log(toInsert)
-    console.log(result?.[0].errors)
+    // console.log(objectName)
+    // // console.log(toInsert)
+    // console.log(result?.[0].errors)
 
     for (let i = 0; i < result.length; i++) {
         const res = result[i]

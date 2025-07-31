@@ -17,12 +17,14 @@ export const IGNORE_FIELDS_OBJECTS = {
   'OpportunityLineItem': ['TotalPrice'],
   'Opportunity': ['Culture__c', 'PriceListXPaymentCondition__c', 'AccountAddressDelivery__c', 'PriceListSync__c', 'AccountAddressDelivery__c', 'SyncedQuoteId'],
   'PaymentCondition__c': ['OwnerId'],
-  'OrderItem': ['OriginalOrderItemId', 'ParentOrderItem__c', 'ContractLineItem__c']
+  'OrderItem': ['OriginalOrderItemId', 'ParentOrderItem__c', 'ContractLineItem__c', 'CustomizedId__c'],
+  'Order': ['StatusCode']
 }
 
 export const UNIQUE_FIELDS_OBJECTS = {
   'Account': 'SapId__c',
-  'Order': 'Name',
+  'ServiceContract': 'SapId__c',
+  'Order': 'SapId__c',
   'Quote': 'Name',
   'Opportunity': 'Name',
   'Territory2': 'TerritoryCode__c',
@@ -49,7 +51,7 @@ async function main() {
     name: 'objects',
     message: 'Quais objetos você quer clonar?',
     // choices: ['Account', 'Contact', 'Opportunity', 'Lead', 'Territory2', 'City__c', 'Pricebook2', 'Product2', 'Marca__c']
-    choices: ['Account', 'ObjectTerritory2Association', 'OpportunityLineItem', 'Order', 'ServiceContract', 'PaymentCondition__c', 'QuoteLineItem', 'ContractLineItem', 'OrderItem', 'UserTerritory2Association']
+    choices: ['Account', 'SalesRule__c', 'DiscountByMarketingSegmentation__c', 'Pricebook2Assignment__c', 'PaymentCondition__c', 'AccountGrouping__c', 'DiscountByMarketingSegmentation__c', 'AccountContactRelation', 'OpportunityLineItem', 'Order', 'ServiceContract', 'PaymentCondition__c', 'QuoteLineItem', 'ContractLineItem', 'OrderItem', 'UserTerritory2Association']
   }])
 
   for (const object of objects) {
@@ -84,7 +86,7 @@ async function main() {
 
       const recordsAlreadyExistsExternalIds = recordsAlreadyExists.map((record) => record[externalField])
 
-      const recordsToInsertSize = 1
+      const recordsToInsertSize = 40000
 
       const recordsToInsert = records.filter((record) => !recordsAlreadyExistsExternalIds.includes(record[externalField])).slice(0, recordsToInsertSize)
       // console.log(recordsToInsert[0])
