@@ -51,7 +51,7 @@ async function main() {
     name: 'objects',
     message: 'Quais objetos você quer clonar?',
     // choices: ['Account', 'Contact', 'Opportunity', 'Lead', 'Territory2', 'City__c', 'Pricebook2', 'Product2', 'Marca__c']
-    choices: ['Account', 'CultureArea__c', 'AccountShippingRelation__c', 'SalesRule__c', 'DiscountByMarketingSegmentation__c', 'PaymentCategoryCultureRelation_', 'Pricebook2Assignment__c', 'PaymentCondition__c', 'AccountGrouping__c', 'DiscountByMarketingSegmentation__c', 'AccountContactRelation', 'OpportunityLineItem', 'Order', 'ServiceContract', 'PaymentCondition__c', 'QuoteLineItem', 'ContractLineItem', 'OrderItem', 'UserTerritory2Association']
+    choices: ['Account', 'CultureArea__c', 'AccountShippingRelation__c', 'SalesRule__c', 'DiscountByMarketingSegmentation__c', 'PaymentCategoryCultureRelation_c', 'Pricebook2Assignment__c', 'PaymentCondition__c', 'AccountGrouping__c', 'DiscountByMarketingSegmentation__c', 'AccountContactRelation', 'OpportunityLineItem', 'Order', 'ServiceContract', 'PaymentCondition__c', 'QuoteLineItem', 'ContractLineItem', 'OrderItem', 'UserTerritory2Association']
   }])
 
   for (const object of objects) {
