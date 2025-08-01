@@ -201,7 +201,7 @@ export async function getExternalIdField(conn: Connection, objectName: string): 
 }
 
 
-const retainOriginalIds = ['User', 'RecordType', 'Group']
+const retainOriginalIds = ['User', 'RecordType', 'Group', 'Territory2Type', 'Territory2Model']
 
 /** Inserção em cascata de registros */
 export async function insertCascade(
@@ -209,12 +209,18 @@ export async function insertCascade(
     connDest: Connection,
     objectName: string,
     records: any[],
-    insertedCache: Record<string, Record<string, string>> = {}
+    insertedCache: Record<string, Record<string, string>> = {},
+    metadataByObjectName: Record<string, DescribeSObjectResult> = {}
 ): Promise<RecordResult[]> {
-    const metadata: DescribeSObjectResult = await connSource.sobject(objectName).describe()
+    let metadata = metadataByObjectName[objectName];
+
+    if (!metadata) {
+        metadata = await connSource.sobject(objectName).describe()
+        metadataByObjectName[objectName] = metadata
+    }
+
     const ignoreFields = IGNORE_FIELDS_OBJECTS[objectName] ?? []
     metadata.fields = metadata.fields.filter((field) => !ignoreFields.includes(field.name))
-    let writableFields = metadata.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
     const relationFields = metadata.fields.filter(f => f.referenceTo.length && f.relationshipName && f.createable)
 
     if (!insertedCache[objectName]) insertedCache[objectName] = {}
@@ -272,10 +278,16 @@ export async function insertCascade(
 
                 const relatedExternalField = await getExternalIdField(connSource, relatedObject)
 
+                let metadataRelatedObject = metadataByObjectName[relatedObject]
+
+                if (!metadataRelatedObject) {
+                    metadataRelatedObject = await connSource.sobject(relatedObject).describe()
+                    metadataByObjectName[relatedObject] = metadataRelatedObject
+                }
+
                 const ignoreFieldsRelatedObject = IGNORE_FIELDS_OBJECTS[relatedObject] ?? []
-                let writableFieldsRelatedObject = (await getWritableFields(connSource, relatedObject)).filter(
-                    (field) => !ignoreFieldsRelatedObject.includes(field)
-                )
+                metadataRelatedObject.fields = metadataRelatedObject.fields.filter((field) => !ignoreFieldsRelatedObject.includes(field.name))
+                let writableFieldsRelatedObject = metadataRelatedObject.fields.filter(f => f.createable || f.name === 'Id').map(f => f.name)
 
                 const relatedRecord = await getRecord(
                     connSource,
@@ -297,7 +309,8 @@ export async function insertCascade(
                         connDest,
                         relatedObject,
                         [relatedRecord],
-                        insertedCache
+                        insertedCache,
+                        metadataByObjectName
                     )
                     const idInserted = relatedResults.find(r => r.Inserido === '✅')?.IdSalesforce
                     if (idInserted) {

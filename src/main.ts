@@ -50,8 +50,7 @@ async function main() {
     type: 'checkbox',
     name: 'objects',
     message: 'Quais objetos você quer clonar?',
-    // choices: ['Account', 'Contact', 'Opportunity', 'Lead', 'Territory2', 'City__c', 'Pricebook2', 'Product2', 'Marca__c']
-    choices: ['Account', 'CultureArea__c', 'AccountShippingRelation__c', 'SalesRule__c', 'DiscountByMarketingSegmentation__c', 'PaymentCategoryCultureRelation_c', 'Pricebook2Assignment__c', 'PaymentCondition__c', 'AccountGrouping__c', 'DiscountByMarketingSegmentation__c', 'AccountContactRelation', 'OpportunityLineItem', 'Order', 'ServiceContract', 'PaymentCondition__c', 'QuoteLineItem', 'ContractLineItem', 'OrderItem', 'UserTerritory2Association']
+    choices: ['Territory2', 'Account', 'Opportunity', 'Quote', 'ServiceContract', 'Order', 'OpportunityLineItem', 'QuoteLineItem', 'ContractLineItem', 'OrderItem', 'ObjectTerritory2Association', 'PaymentCondition__c', 'City__c', 'CultureArea__c', 'Marca__c', 'AccountShippingRelation__c', 'SalesRule__c', 'DiscountByMarketingSegmentation__c', 'PaymentCategoryCultureRelation__c', 'Pricebook2Assignment__c', 'PaymentCondition__c', 'AccountGrouping__c', 'DiscountByMarketingSegmentation__c', 'AccountContactRelation', 'UserTerritory2Association']
   }])
 
   for (const object of objects) {
